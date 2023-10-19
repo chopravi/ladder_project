@@ -1,5 +1,4 @@
 // Libraries
-
 #include <Wire.h>
 #include <math.h>
 #include "Adafruit_MPR121.h"
@@ -19,6 +18,7 @@
 #define rung8 29
 #define rung9 30
 #define rung10 31
+#define trialBNC 32
 #ifndef _BV
 #define _BV(bit) (1 << (bit))
 #endif
@@ -32,8 +32,9 @@ uint16_t lasttouched = 0;
 uint16_t currtouched = 0;
 
 // defining variables
-int minimumBlinkInterval = 5000;   // minimum interval at which to blink (milliseconds)
+int minimumBlinkInterval = 1000;   // minimum interval at which to blink (milliseconds)
 int maximumBlinkInterval = 10000;  // maximum interval at which to blink if the center beam is hit
+const int rungNumber = 10;               // Number of rungs on the ladder
 const int arrayLength = 50;        // Number of cycles that the array is able to store
 int touchCountArray[arrayLength];  // creating array to store touch readings, initialized to all zeros
 int currentIndex = 0;              // Index for the current reading stored in array
@@ -90,6 +91,7 @@ void loop() {
 
   //getting capacitive touch input
   capacitive_touch();
+
   // Update the light states
   updateStateMachine();
 
@@ -99,6 +101,7 @@ void loop() {
   // put a delay so it isn't overwhelming
   delay(100);
 }
+
 //code for switching between states
 void updateStateMachine() {
   bool beam1Broken = digitalRead(beam1PinVoltage);     // read state of beam #1
@@ -135,25 +138,36 @@ void updateStateMachine() {
       break;
   }
 }
+
+
 void capacitive_touch() {
-  currtouched = cap.touched();
+  currtouched = cap.touched(); // Create a variable currtouched that stores all touched rungs
+  
+  // This portion of code creates a byte array with 10 columns, each of which corresponds to a rung
+  // The array continually updates with a "1" in each column for a run that is touched, otherwise it's 0
+  // The output is printexd to Serial Monitor
+  byte touchArray[rungNumber];
+  for (int i=0 ; i < rungNumber; i++) { // Loop through the rungs to see which rungs are touched in each loop
+    if (currtouched & (1 << i)) {
+      touchArray[i] = 1;
+    }
+    Serial.print(touchArray[i]);
+    Serial.print(", ");
+  }
+  Serial.println();
+  memset(touchArray,0,rungNumber);
+
+  // This portion of code creates an array that is used to get an integrated view
+  // of when the mouse touched the ladder
   touchCountArray[arrayLength];
-  // Get the touch status as a 12-bit number
-  int touchCount = 0;
-  // Loop through each touch pad to count the number of touches
-  for (uint8_t i = 0; i < 12; i++) {
+  int touchCount = 0;  // Get the touch status as a 12-bit number
+  for (uint8_t i = 0; i < 12; i++) { // Loop through each touch pad to count the number of touches
     if (currtouched & (1 << i)) {
       touchCount++;
     }
   }
-  // Store the touches in the array
-  touchCountArray[currentIndex] = touchCount;
-  // Move to the next index, replace the previous
-  currentIndex = (currentIndex + 1) % arrayLength;
-  for (int j = 0; j < arrayLength; j++) {
-    Serial.print(touchCountArray[j]);
-  }
-  Serial.println(" ");
+  touchCountArray[currentIndex] = touchCount; // Store the touches in the array
+  currentIndex = (currentIndex + 1) % arrayLength; // Move to the next index, replace the previous
   //finding the sum of touchCountArray each cycle
   int sum = 0;
   for (int i = 0; i < arrayLength; i++) {
@@ -162,16 +176,10 @@ void capacitive_touch() {
   // Calculate the average
   float average = (float)sum / arrayLength;
 
-  // Print the average to the serial monitor
-  Serial.print("Average: ");
-  Serial.println(average);
-
   //defining ladderON boolean
   if (average < 0.4) {
     ladderON = false;
   } else if (average >= 0.4) {
     ladderON = true;
   }
-  Serial.print("LadderON: ");
-  Serial.println(ladderON);
 }
